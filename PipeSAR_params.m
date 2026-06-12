@@ -21,6 +21,13 @@ N  = N1+N2+N3-2;     % 总分辨率 = 24 bit（两处 1-bit 冗余重叠）
 fs  = 500e3;         % 采样率 (Hz)
 Vcm = 0.9;           % 共模电压 (V)
 
+%%%%%%%%%%%%%%%%% 随机种子（可复现性）%%%%%%%%%%%%%%
+% 固定种子保证多次运行得到同一组电容失配 —— 校准算法开发时需要在同一
+% 失配下反复迭代、对比校准前后效果。设为 [] 则每次运行随机生成新失配。
+% 注意：该种子同时固定了后面采样时刻抖动 t_jit 的随机序列。
+mismatch_seed = 1;
+if ~isempty(mismatch_seed), rng(mismatch_seed); end
+
 %%%%%%%%%%%%%%%%% 第一级 ADC 参数 %%%%%%%%%%%%%%%%%%
 Cu1 = 50e-15;                                   % 单位电容 (F)
 sigmaCu1 = 0.0;  C_mismatch1 = sigmaCu1*Cu1;    % 电容失配系数
@@ -79,20 +86,21 @@ Vn_sig_p3 = sqrt(k*T/C_tot_p3);  Vn_sig_n3 = sqrt(k*T/C_tot_n3);
 % 提示：24-bit 下级间增益 G1=2^(N1-1)=128，反馈系数 beta=2/2^N1，
 % 闭环增益误差约 1/(beta*Av)。Av=120dB 时误差约 1.3e-4，足以把
 % ENOB 限制在 ~13 bit —— 这正是留给数字校准算法去修正的非理想因素。
-Av  = 120;           % 开环增益 (dB)
-GBW = 1e12;          % 增益带宽积 (Hz)
-Amp_offset = 0e-3;   % 失调电压 (V)
-Amp_noise  = 0e-3;   % 输入参考噪声 RMS (V)
+Av  = 120;           % 开环增益 (dB)（两级 RA 共用）
+GBW = 1e12;          % 增益带宽积 (Hz)（两级 RA 共用）
+Amp_offset1 = 0e-3;  Amp_noise1 = 0e-3;   % RA1 失调 / 输入参考噪声 RMS (V)
+Amp_offset2 = 0e-3;  Amp_noise2 = 0e-3;   % RA2 失调 / 输入参考噪声 RMS (V)
 
 % 级间增益设置（与原 RA_FUN 调用一致）
-Cs1 = 2*Cu1*Vref1/Vref2;   Ch1 = 2^N1*Cu1 + Cp_n1;   % G1 ≈ Ch1/Cs1 = 2^(N1-1)
+% 注：两级保持寄生项统一取 P 端（旧版 Ch1 误用了 Cp_n1，默认寄生为 0 时无差别）
+Cs1 = 2*Cu1*Vref1/Vref2;   Ch1 = 2^N1*Cu1 + Cp_p1;   % G1 ≈ Ch1/Cs1 = 2^(N1-1)
 Cs2 = 2*Cu2*Vref2/Vref3;   Ch2 = 2^N2*Cu2 + Cp_p2;   % G2 ≈ 2^(N2-1)
 
 %%%%%%%%%%%%%%%%%%%% 比较器参数 %%%%%%%%%%%%%%%%%%%%
-Comp_offset1 = 0e-3;
-Comp_offset2 = 0e-3;
-Comp_offset3 = 0e-3;
-Comp_noise   = 0e-3;
+% 失调与噪声均按级独立设置，便于分级灵敏度分析
+Comp_offset1 = 0e-3;   Comp_noise1 = 0e-3;
+Comp_offset2 = 0e-3;   Comp_noise2 = 0e-3;
+Comp_offset3 = 0e-3;   Comp_noise3 = 0e-3;
 
 %%%%%%%%%%%%%%%%%%%% 输入信号 %%%%%%%%%%%%%%%%%%%%%%
 num = 2^15;                  % 采样点数（FFT 点数）

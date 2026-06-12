@@ -28,36 +28,33 @@ dB_spectrum     = 10*log10(Amp_spectrum.^2/(Nsample/2)); % dB谱
 max_dBc         = max(dB_spectrum); % 输入信号功率 (dB)
 
 
-[~, bin]        = max(dB_spectrum(1:floor(Nsample/2))); % 找到输入信号位置
-signal_frequency= bin; 
+[~, bin]        = max(dB_spectrum(1:floor(Nsample/2))); % 找到输入信号位置（MATLAB下标）
 signal_bin      = 1; % 将信号附近的旁瓣视作信号功率
 harmonic_bin    = 1; % 将谐波附近的旁瓣视作谐波功率
 start_power     = 5; % 忽略DC直流
 signal_power    = sum(Power_spectrum(bin-signal_bin:bin+signal_bin)); % 输入信号功率，包括旁瓣
 total_power     = sum(Power_spectrum(start_power:floor(Nsample/2))); % 总功率
-Power_spectrum_half = Power_spectrum(start_power:floor(Nsample/2)); % 半边谱功率，奈奎斯特区间总功率
-
-
-harmonic_indices = signal_frequency * (2:20); % 考虑到20次谐波
 
 %%%%%%%%%%%%%%%%%%%% 找到谐波位置 %%%%%%%%%%%%%%%%%%%
-for i = 1:length(harmonic_indices)
-    if harmonic_indices(i) > Nsample / 2
-        division_result = harmonic_indices(i) / (Nsample / 2);
-        remainder_fs_2 = mod(harmonic_indices(i), Nsample / 2);
-
-        if rem(division_result, 2) == 1 % 如果除以N/2是奇数，说明落在偶数区间
-            if remainder_fs_2 == 0
-                harmonic_indices(i) = Nsample / 2;
-            else
-                harmonic_indices(i) = Nsample / 2 - abs(remainder_fs_2);
-            end
-        else % 如果除以N/2是偶数，说明落在奇数区间
-            harmonic_indices(i) = remainder_fs_2;
-        end
+% 信号位于 MATLAB 下标 bin，对应 0 基频率格点 f0 = bin-1；
+% h 次谐波的频率格点为 h*f0：先对 Nsample 取模，超过 Nsample/2 时镜像
+% 折回第一奈奎斯特区，最后 +1 转回 MATLAB 下标，直接索引全谱
+% Power_spectrum（修正了旧版按 h*bin 定位偏 h-1 个 bin、又用全谱坐标
+% 索引被 start_power 截短的半谱再偏 4 个 bin 的问题）。
+f0 = bin - 1;
+harmonic_order = 2:20; % 考虑到20次谐波
+harmonic_power_single = zeros(1, length(harmonic_order));
+for i = 1:length(harmonic_order)
+    kh = mod(harmonic_order(i)*f0, Nsample);   % 折叠到 0 ~ Nsample-1
+    if kh > Nsample/2
+        kh = Nsample - kh;                     % 镜像折回第一奈奎斯特区
     end
-    harmonic_indices(i)=harmonic_indices(i);
-    harmonic_power_single(i)  = sum(Power_spectrum_half(harmonic_indices(i)-harmonic_bin:harmonic_indices(i)+harmonic_bin));
+    idx = kh + 1;                              % 0 基频率格点 -> MATLAB 下标
+    lo = max(idx - harmonic_bin, start_power); % 防越界，且不计入直流附近
+    hi = min(idx + harmonic_bin, floor(Nsample/2));
+    if lo <= hi
+        harmonic_power_single(i) = sum(Power_spectrum(lo:hi));
+    end
 end
 
 harmonic_power  = sum(harmonic_power_single); % 计算总的谐波功率

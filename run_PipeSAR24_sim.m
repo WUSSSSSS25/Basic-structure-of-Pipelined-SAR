@@ -8,23 +8,46 @@
 %   sim_Dout [num x 1]   数字后端输出码（默认理想重组，0 ~ 2^N-1 量级）
 %   sim_Vout [num x 1]   折算输出电压
 %   sim_Vres1p/sim_Vres1n 第一级余差电压（调试/基于余差的校准用）
+%   sim_Vres2p/sim_Vres2n 第二级余差电压
 
-clear; clc; close all;
+%% 0. 校准权重保留开关
+% 先在 workspace 中设 use_calibrated_W = 1 再运行本脚本，可保留当前
+% workspace 中已校准的 W1/W2/W3/OFS（不被 PipeSAR_params 重置为理想值），
+% 用于把估计出的权重代回 Simulink 模型重新仿真验证。默认 0 = 重置。
+if ~exist('use_calibrated_W','var'), use_calibrated_W = 0; end
+if use_calibrated_W
+    if exist('W1','var') && exist('W2','var') && exist('W3','var') && exist('OFS','var')
+        W_cal = struct('W1',W1,'W2',W2,'W3',W3,'OFS',OFS);
+    else
+        warning('use_calibrated_W=1 但 workspace 中没有 W1/W2/W3/OFS，改用理想权重。');
+        use_calibrated_W = 0;
+    end
+end
+clearvars -except use_calibrated_W W_cal; clc; close all;
 
 mdl = 'PipeSAR24';
 
 %% 1. 加载参数
 PipeSAR_params;
+if use_calibrated_W
+    W1 = W_cal.W1; W2 = W_cal.W2; W3 = W_cal.W3; OFS = W_cal.OFS;
+    fprintf('use_calibrated_W = 1：沿用 workspace 中已校准的 W1/W2/W3/OFS。\n');
+end
 
 %% 2. 生成/加载模型
 if ~exist([mdl '.slx'],'file')
     build_PipeSAR24_model(mdl);
-elseif ~bdIsLoaded(mdl)
-    load_system(mdl);
+else
+    if ~bdIsLoaded(mdl), load_system(mdl); end
+    % 旧版模型缺少第二级余差记录/分级噪声参数，检测到后自动重建
+    if getSimulinkBlockHandle([mdl '/log_Vres2p']) == -1
+        fprintf('检测到旧版 %s.slx（缺少 log_Vres2p），自动重建模型...\n', mdl);
+        build_PipeSAR24_model(mdl);
+    end
 end
 
 %% 3. 仿真
-fprintf('开始仿真：%d 个采样点 @ fs = %.0f MHz ...\n', num, fs/1e6);
+fprintf('开始仿真：%d 个采样点 @ fs = %g kHz ...\n', num, fs/1e3);
 out = sim(mdl, 'ReturnWorkspaceOutputs', 'on');
 
 getv = @(name) squeeze(out.get(name));   % 兼容 2-D / 3-D 记录格式
@@ -33,6 +56,10 @@ sim_D2   = reshapeCodes(getv('sim_D2'),  N2);
 sim_D3   = reshapeCodes(getv('sim_D3'),  N3);
 sim_Dout = getv('sim_Dout'); sim_Dout = sim_Dout(:);
 sim_Vout = getv('sim_Vout'); sim_Vout = sim_Vout(:);
+sim_Vres1p = getv('sim_Vres1p'); sim_Vres1p = sim_Vres1p(:);
+sim_Vres1n = getv('sim_Vres1n'); sim_Vres1n = sim_Vres1n(:);
+sim_Vres2p = getv('sim_Vres2p'); sim_Vres2p = sim_Vres2p(:);
+sim_Vres2n = getv('sim_Vres2n'); sim_Vres2n = sim_Vres2n(:);
 
 fprintf('仿真完成。原始码矩阵: D1 %dx%d, D2 %dx%d, D3 %dx%d\n', ...
     size(sim_D1), size(sim_D2), size(sim_D3));
@@ -44,7 +71,11 @@ Dout_cal = My_Digital_Calibration(sim_D1, sim_D2, sim_D3, N, N1, N2, N3);
 
 % 校验：离线理想重组应与 Simulink 后端输出一致
 err_check = max(abs(Dout_cal - sim_Dout));
-fprintf('离线重组与模型后端输出最大差值: %g (默认应为 0)\n', err_check);
+if use_calibrated_W
+    fprintf('离线理想重组与模型后端输出最大差值: %g (模型使用校准权重，差值反映校准修正量)\n', err_check);
+else
+    fprintf('离线重组与模型后端输出最大差值: %g (默认应为 0)\n', err_check);
+end
 
 %% 5. 动态性能测试（复用原 Dynamic_test.m）
 Nsample = num;
@@ -63,7 +94,8 @@ end
 
 %% 7. 保存原始数据供离线算法开发
 save('PipeSAR24_rawdata.mat','sim_D1','sim_D2','sim_D3','sim_Dout', ...
-     'sim_Vout','fs','fin','num','N','N1','N2','N3','W1','W2','W3','OFS');
+     'sim_Vout','sim_Vres1p','sim_Vres1n','sim_Vres2p','sim_Vres2n', ...
+     'fs','fin','num','N','N1','N2','N3','W1','W2','W3','OFS');
 fprintf('原始码已保存到 PipeSAR24_rawdata.mat\n');
 
 %% ---------- 本地函数 ----------
