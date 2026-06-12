@@ -74,20 +74,26 @@ SFDR            = min(Dout_SFDR_1,Dout_SFDR_2);
 
 if(En_plot==1) % 判断是否绘图
     fs_=fs/1e6; % 将X轴设置为MHz单位
-    fin=bin*fs/(1e6*Nsample); % 输入信号实际频率
+    fin=(bin-1)*fs/(1e6*Nsample); % 输入信号实际频率（bin 为 MATLAB 下标，频率格点为 bin-1）
+    ydB = dB_spectrum(2:Nsample/2+1) - max_dBc;    % 归一化谱 (dBc)
+    % Y 轴下限随实际噪底自适应：高分辨率下单点噪底约为
+    % -(SNDR + 10*log10(Nsample/2)) dBc，固定 -140 会把整条噪底裁出图外
+    mindB = min(ydB(isfinite(ydB)));               % 忽略幅度为 0 的 -Inf 频点
+    if isempty(mindB) || ~isfinite(mindB), mindB = -200; end
+    floor_dB = max(10*floor((mindB-10)/10), -250);
+    ydB(~isfinite(ydB)) = floor_dB;                % -Inf 频点钳位到下限，保证连线可绘
     figure; % 定义图片
     % hold on
-    Figure=plot([0:Nsample/2-1].*fs_/Nsample,dB_spectrum(2:Nsample/2+1)-max_dBc,'k'); % 绘图
-    mindB=min(dB_spectrum(2:Nsample/2+1)-max_dBc); % 标准化Y轴
+    Figure=plot([0:Nsample/2-1].*fs_/Nsample, ydB,'k'); % 绘图
     grid on;
     zoom;
     set(gca,'linewidth',3);
     set(gca,'fontsize',20,'FontWeight','bold','fontname','Arial');
     set(Figure,'linewidth',2.5);
-    title(sprintf('fin = %3.2f MHz,  fs = %d MHz',fin,fs_),'FontWeight','bold','fontsize',20,'fontname','Arial');
+    title(sprintf('fin = %3.3f MHz,  fs = %.3g MHz',fin,fs_),'FontWeight','bold','fontsize',20,'fontname','Arial');
     xlabel('Frequency (MHz)','FontWeight','bold','fontsize',20,'fontname','Arial');
     ylabel('Amplitude (dB)','FontWeight','bold','fontsize',20,'fontname','Arial');
-    xlim([0 fs_/2]);ylim([-140 0]);
+    xlim([0 fs_/2]);ylim([floor_dB 0]);
 
     % 添加动态参数文本显示
     text(fs_/5,-30, sprintf(' THD = %3.2f dB\n SFDR = %3.2f dB\n SNR = %3.2f dB\n SNDR = %3.2f dB\n ENOB = %3.2f bit',...
