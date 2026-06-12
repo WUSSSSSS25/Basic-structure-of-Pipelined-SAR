@@ -1,0 +1,78 @@
+%% run_PipeSAR24_sim.m
+% 一键运行：加载参数 -> (必要时)生成模型 -> 仿真 -> 动态/静态性能测试
+%
+% 仿真结束后 base workspace / out 中可得到（供你的校准算法使用）：
+%   sim_D1   [num x N1]  第一级原始数字码（MSB first）
+%   sim_D2   [num x N2]  第二级原始数字码
+%   sim_D3   [num x N3]  第三级原始数字码
+%   sim_Dout [num x 1]   数字后端输出码（默认理想重组，0 ~ 2^N-1 量级）
+%   sim_Vout [num x 1]   折算输出电压
+%   sim_Vres1p/sim_Vres1n 第一级余差电压（调试/基于余差的校准用）
+
+clear; clc; close all;
+
+mdl = 'PipeSAR24';
+
+%% 1. 加载参数
+PipeSAR_params;
+
+%% 2. 生成/加载模型
+if ~exist([mdl '.slx'],'file')
+    build_PipeSAR24_model(mdl);
+elseif ~bdIsLoaded(mdl)
+    load_system(mdl);
+end
+
+%% 3. 仿真
+fprintf('开始仿真：%d 个采样点 @ fs = %.0f MHz ...\n', num, fs/1e6);
+out = sim(mdl, 'ReturnWorkspaceOutputs', 'on');
+
+getv = @(name) squeeze(out.get(name));   % 兼容 2-D / 3-D 记录格式
+sim_D1   = reshapeCodes(getv('sim_D1'),  N1);
+sim_D2   = reshapeCodes(getv('sim_D2'),  N2);
+sim_D3   = reshapeCodes(getv('sim_D3'),  N3);
+sim_Dout = getv('sim_Dout'); sim_Dout = sim_Dout(:);
+sim_Vout = getv('sim_Vout'); sim_Vout = sim_Vout(:);
+
+fprintf('仿真完成。原始码矩阵: D1 %dx%d, D2 %dx%d, D3 %dx%d\n', ...
+    size(sim_D1), size(sim_D2), size(sim_D3));
+
+%% 4. 数字校准接入点（离线方式）
+% 默认调用模板 My_Digital_Calibration（当前 = 理想重组，与 Simulink 内
+% Digital_Backend 结果一致）。把你的算法写进该函数即可。
+Dout_cal = My_Digital_Calibration(sim_D1, sim_D2, sim_D3, N, N1, N2, N3);
+
+% 校验：离线理想重组应与 Simulink 后端输出一致
+err_check = max(abs(Dout_cal - sim_Dout));
+fprintf('离线重组与模型后端输出最大差值: %g (默认应为 0)\n', err_check);
+
+%% 5. 动态性能测试（复用原 Dynamic_test.m）
+Nsample = num;
+En_plot = 1;          % 是否绘图
+wid     = 0;          % 0=不加窗, 1=hamming, 2=hann
+[THD,SFDR,SNR,SNDR,ENOB] = Dynamic_test(Dout_cal', fs, Nsample, En_plot, wid);
+fprintf('SNDR = %.2f dB,  SFDR = %.2f dB,  ENOB = %.2f bit\n', SNDR, SFDR, ENOB);
+
+%% 6. 静态性能测试（可选）
+% 注意：24-bit 共 2^24 个码道，2^15 个采样点远不足以做直方图法 DNL/INL，
+% 仅在大幅增加 num（>> 2^26）后才有意义，默认关闭。
+do_static = 0;
+if do_static
+    [DNLmax,DNLmin,INLmax,INLmin] = Static_test(Dout_cal', N); %#ok<UNRCH>
+end
+
+%% 7. 保存原始数据供离线算法开发
+save('PipeSAR24_rawdata.mat','sim_D1','sim_D2','sim_D3','sim_Dout', ...
+     'sim_Vout','fs','fin','num','N','N1','N2','N3','W1','W2','W3','OFS');
+fprintf('原始码已保存到 PipeSAR24_rawdata.mat\n');
+
+%% ---------- 本地函数 ----------
+function M = reshapeCodes(M, Nb)
+% 把 To Workspace 记录的码流整理成 [num x Nb]
+if ndims(M) == 3
+    M = squeeze(M)';   % [1 x Nb x num] -> [num x Nb]
+end
+if size(M,2) ~= Nb && size(M,1) == Nb
+    M = M';
+end
+end
