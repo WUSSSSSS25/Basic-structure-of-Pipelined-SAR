@@ -9,8 +9,8 @@ Vin_p/Vin_n ──► SAR_Stage1 (8b, 冗余) ──► RA1 (G≈2^7=128) ──
                      │D1[8]                                        │D2[8]
                      ▼                                             ▼
               ┌──────────────────── Digital_Backend ◄──── D3[10] ◄── SAR_Stage3 (10b)
-              │  Digital_Calibration (算法接口)              ▲
-              │  Dout = D1·W1 + D2·W2 + D3·W3 − OFS              │
+              │  Digital_Calibration (算法接口)                   ▲
+              │  Dout = D1·W1 + D2·W2 + D3·W3 − OFS              |
               └──► Dout / Vout                          RA2 (G≈2^7) ◄── 余差2
 ```
 
