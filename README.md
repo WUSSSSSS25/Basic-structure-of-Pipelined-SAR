@@ -1,6 +1,6 @@
 # 24-bit 三级 Pipelined-SAR ADC Simulink 模型
 
-基于你提供的 MATLAB 行为级代码（`SAR_FUN.m / SAR_FUN_R.m / RA_FUN.m / PipeSAR_test_3stage.m`）移植的 Simulink 模型，并预留了数字校准接口。结构对标论文 **"24b 2MS/s SAR ADC with 0.03ppm INL and 106.3dB DR in 180nm CMOS"**：8b → 10b → 8b 三级流水线，共 2 bit 级间冗余。
+基于MATLAB 行为级代码（`SAR_FUN.m / SAR_FUN_R.m / RA_FUN.m / PipeSAR_test_3stage.m`）移植的 Simulink 模型，并预留了数字校准接口。结构对标论文 **"24b 2MS/s SAR ADC with 0.03ppm INL and 106.3dB DR in 180nm CMOS"**：8b → 10b → 8b 三级流水线，共 2 bit 级间冗余。
 
 ## 架构
 
@@ -9,7 +9,7 @@ Vin_p/Vin_n ──► SAR_Stage1 (8b, 冗余) ──► RA1 (G≈2^7=128) ──
                      │D1[8]                                        │D2[10]
                      ▼                                             ▼
               ┌──────────────────── Digital_Backend ◄──── D3[8] ◄── SAR_Stage3 (8b)
-              │  Digital_Calibration (你的算法接口)              ▲
+              │  Digital_Calibration (算法接口)                   ▲
               │  Dout = D1·W1 + D2·W2 + D3·W3 − OFS              │
               └──► Dout / Vout                          RA2 (G≈2^9=512) ◄── 余差2
 ```
@@ -77,8 +77,8 @@ function [Dout, Vout] = fcn(D1, D2, D3, W1, W2, W3, OFS, Kv)
 
 ## 注意事项
 
-- 24-bit 量级下 `Dout` 最大约 2^24，double 精度完全够用；
+- 24-bit 量级下 `Dout` 最大约 2^24，double 精度够用；
 - 静态测试（直方图法 DNL/INL）需要远多于 2^24 的采样点才有统计意义，`run_PipeSAR24_sim.m` 中默认关闭（`do_static = 0`）；
 - `randn` 在 MATLAB Function 块内每步独立产生噪声，温度 `T=0` 时 kT/C 噪声自动关闭（与原脚本默认一致）；
 - 修改位数分配（N1/N2/N3）后需重新运行 `build_PipeSAR24_model`，因为各级位宽在生成的块代码中是定长的（便于代码生成与定尺寸信号）。
-- 生成模型脚本基于 Stateflow API（`sfroot` 查找 `Stateflow.EMChart` 并写入 `Script`、把参数数据作用域设为 `Parameter`），需要 R2019b 及以上版本；若你的版本报错，告诉我具体报错信息即可。
+- 生成模型脚本基于 Stateflow API（`sfroot` 查找 `Stateflow.EMChart` 并写入 `Script`、把参数数据作用域设为 `Parameter`）。
