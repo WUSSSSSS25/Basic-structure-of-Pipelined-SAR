@@ -1,20 +1,20 @@
 # 24-bit 三级 Pipelined-SAR ADC Simulink 模型
 
-基于你提供的 MATLAB 行为级代码（`SAR_FUN.m / SAR_FUN_R.m / RA_FUN.m / PipeSAR_test_3stage.m`）移植的 Simulink 模型，并预留了数字校准接口。
+基于你提供的 MATLAB 行为级代码（`SAR_FUN.m / SAR_FUN_R.m / RA_FUN.m / PipeSAR_test_3stage.m`）移植的 Simulink 模型，并预留了数字校准接口。结构对标论文 **"24b 2MS/s SAR ADC with 0.03ppm INL and 106.3dB DR in 180nm CMOS"**：8b → 10b → 8b 三级流水线，共 2 bit 级间冗余。
 
 ## 架构
 
 ```
-Vin_p/Vin_n ──► SAR_Stage1 (8b, 冗余) ──► RA1 (G≈2^7=128) ──► SAR_Stage2 (8b, 冗余)
-                     │D1[8]                                        │D2[8]
+Vin_p/Vin_n ──► SAR_Stage1 (8b, 冗余) ──► RA1 (G≈2^7=128) ──► SAR_Stage2 (10b, 冗余)
+                     │D1[8]                                        │D2[10]
                      ▼                                             ▼
-              ┌──────────────────── Digital_Backend ◄──── D3[10] ◄── SAR_Stage3 (10b)
+              ┌──────────────────── Digital_Backend ◄──── D3[8] ◄── SAR_Stage3 (8b)
               │  Digital_Calibration (你的算法接口)              ▲
               │  Dout = D1·W1 + D2·W2 + D3·W3 − OFS              │
-              └──► Dout / Vout                          RA2 (G≈2^7) ◄── 余差2
+              └──► Dout / Vout                          RA2 (G≈2^9=512) ◄── 余差2
 ```
 
-- 位分配：N1+N2+N3−2 = 8+8+10−2 = **24 bit**，级间各 1-bit 冗余（W1/W2、W2/W3 位权各重叠一位）。
+- 位分配：N1+N2+N3−2 = 8+10+8−2 = **24 bit**，级间各 1-bit 冗余（W1/W2、W2/W3 位权各重叠一位）。
 - 每个仿真步（Ts = 1/fs）完成一次完整的流水线转换（行为级，与原 for 循环逐采样点等价）。
 - 各级 SAR 为全差分 Vcm-Based 时序，含电容失配、kT/C 噪声、比较器失调/噪声；级间放大器含有限增益（Av）、有限 GBW 建立误差、失调与噪声 —— 全部与原 `SAR_FUN_R / SAR_FUN / RA_FUN` 公式一致。
 
@@ -52,13 +52,13 @@ out = sim('PipeSAR24');
 function [Dout, Vout] = fcn(D1, D2, D3, W1, W2, W3, OFS, Kv)
 ```
 
-- `D1 [1x8]`、`D2 [1x8]`、`D3 [1x10]`：各级原始码（MSB first），每个仿真步更新一次；
+- `D1 [1x8]`、`D2 [1x10]`、`D3 [1x8]`：各级原始码（MSB first），每个仿真步更新一次；
 - `W1/W2/W3/OFS/Kv` 为 Parameter 作用域，直接来自 workspace —— 最简单的权重类校准只需改写 workspace 中的 `W1/W2/W3/OFS`，无需改模型。改写后若用一键脚本重新仿真，需先设 `use_calibrated_W = 1`，否则 `run_PipeSAR24_sim` 会把权重重置回理想值；
 - 若算法需要状态（如 LMS 迭代），在该函数中使用 `persistent` 变量即可逐采样点在线更新。
 
 **方式二：离线（推荐先用这个开发算法）。** 仿真已通过 To Workspace 记录：
 
-- `sim_D1 [num×8]`、`sim_D2 [num×8]`、`sim_D3 [num×10]`：原始码
+- `sim_D1 [num×8]`、`sim_D2 [num×10]`、`sim_D3 [num×8]`：原始码
 - `sim_Vres1p / sim_Vres1n`：第一级余差电压（便于基于余差的校准与调试）
 - `sim_Vres2p / sim_Vres2n`：第二级余差电压
 - `sim_Dout / sim_Vout`：模型内后端输出（对照用）
