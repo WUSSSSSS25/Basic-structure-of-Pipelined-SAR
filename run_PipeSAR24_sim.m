@@ -39,15 +39,24 @@ if ~exist([mdl '.slx'],'file')
     build_PipeSAR24_model(mdl);
 else
     if ~bdIsLoaded(mdl), load_system(mdl); end
-    % 旧版模型缺少第二级余差记录/分级噪声参数，检测到后自动重建
+    % 需要重建的两种情形：
+    %  (1) 旧版模型缺少第二级余差记录 log_Vres2p；
+    %  (2) 位分配 N1/N2/N3 与现有 .slx 生成时不一致（端口宽度已定尺寸，
+    %      不重建会在仿真时报维度不匹配）。生成时已把位分配写入模型描述。
+    want_cfg = sprintf('PipeSAR24 bitcfg: N1=%d N2=%d N3=%d', N1, N2, N3);
+    have_cfg = get_param(mdl, 'Description');
     if getSimulinkBlockHandle([mdl '/log_Vres2p']) == -1
         fprintf('检测到旧版 %s.slx（缺少 log_Vres2p），自动重建模型...\n', mdl);
+        build_PipeSAR24_model(mdl);
+    elseif ~strcmp(have_cfg, want_cfg)
+        fprintf('检测到 %s.slx 位分配与当前参数不一致（"%s" vs "%s"），自动重建模型...\n', ...
+            mdl, have_cfg, want_cfg);
         build_PipeSAR24_model(mdl);
     end
 end
 
 %% 3. 仿真
-fprintf('开始仿真：%d 个采样点 @ fs = %g kHz ...\n', num, fs/1e3);
+fprintf('开始仿真：%d 个采样点 @ fs = %g MHz ...\n', num, fs/1e6);
 out = sim(mdl, 'ReturnWorkspaceOutputs', 'on');
 
 getv = @(name) squeeze(out.get(name));   % 兼容 2-D / 3-D 记录格式

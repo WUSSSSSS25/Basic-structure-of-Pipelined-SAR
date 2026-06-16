@@ -6,12 +6,13 @@ function build_PipeSAR24_model(mdl)
 %   build_PipeSAR24_model;      % 生成并保存 PipeSAR24.slx
 %
 % 模型结构（每个仿真步 = 一个 ADC 采样周期，完成一次完整流水线转换）：
-%   [Vin_p/Vin_n] -> SAR_Stage1(8b,冗余) -> RA1 -> SAR_Stage2(8b,冗余)
-%                 -> RA2 -> SAR_Stage3(10b) -> Digital_Backend(数字校准接口)
+%   [Vin_p/Vin_n] -> SAR_Stage1(8b,冗余) -> RA1 -> SAR_Stage2(10b,冗余)
+%                 -> RA2 -> SAR_Stage3(8b) -> Digital_Backend(数字校准接口)
+%   位分配 8/10/8，共 2 bit 级间冗余（对标论文 24b 2MS/s SAR ADC）
 %
 % 数字接口（你的校准算法接入点）：
 %   1) 在线方式：替换子系统 PipeSAR24/Digital_Backend/Digital_Calibration
-%      内的 MATLAB 代码（输入 D1[1x8], D2[1x8], D3[1x10]，输出 Dout, Vout），
+%      内的 MATLAB 代码（输入 D1[1x8], D2[1x10], D3[1x8]，输出 Dout, Vout），
 %      或直接在 workspace 中修改权重 W1/W2/W3/OFS。
 %   2) 离线方式：模型已通过 To Workspace 输出原始码 sim_D1/sim_D2/sim_D3，
 %      可在 MATLAB 中用你的算法离线重组（见 My_Digital_Calibration.m）。
@@ -38,6 +39,10 @@ set_param(mdl, ...
     'FixedStep','1/fs', ...
     'StopTime','(num-1)/fs', ...
     'SaveTime','off');
+
+% 把生成时使用的位分配写入模型描述，供 run 脚本检测位数是否变更
+% （各级块端口宽度在生成时定尺寸，改 N1/N2/N3 后必须重建模型）
+set_param(mdl, 'Description', sprintf('PipeSAR24 bitcfg: N1=%d N2=%d N3=%d', N1, N2, N3));
 
 %% ------------------- 信号源 -------------------
 % 注意：必须开启插值（Interpolate on）。若关闭插值，From Workspace 要求

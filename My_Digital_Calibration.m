@@ -7,7 +7,7 @@ function Dout = My_Digital_Calibration(D1, D2, D3, N, N1, N2, N3, varargin)
 %   D1 [num x N1]  第一级原始数字码，MSB first（0/1）
 %   D2 [num x N2]  第二级原始数字码
 %   D3 [num x N3]  第三级原始数字码
-%   N, N1, N2, N3  位数配置（24-bit: 8/8/10，级间各 1-bit 冗余）
+%   N, N1, N2, N3  位数配置（24-bit: 8/10/8，级间各 1-bit 冗余）
 %   varargin       可传入你算法需要的其他数据，例如第一级余差
 %                  sim_Vres1p/sim_Vres1n、参考通道码等
 %
